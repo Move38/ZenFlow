@@ -5,15 +5,21 @@ enum commandStates {INERT, SEND_PERSIST, SEND_SPARKLE, RESOLVING};
 byte commandState;//this is the state sent to neighbors
 byte internalState;//this state is internal, and does not get sent
 
-Color colors[8] = {RED, GREEN, BLUE, ORANGE, MAGENTA, YELLOW, CYAN, makeColorRGB(127, 255, 0)}; //the last color is a lime green color
-byte currentColor;
+// Colors by hue
+byte hues[8] = {0, 31, 62, 93, 124, 155, 186, 217}; //the last color is a lime green color
+
+//Color colors[8] = {RED, GREEN, BLUE, ORANGE, MAGENTA, YELLOW, CYAN, makeColorRGB(127, 255, 0)}; //the last color is a lime green color
+byte currentHue;
 byte transitionColor;
 byte sparkleBrightness[6] = {0, 0, 0, 0, 0, 0};
 
+#define SEND_DELAY     100
+#define SEND_DURATION  800
+
+uint32_t timeOfSend = 0;
+
 Timer sendTimer;
-byte sendIncrement = 200;
-Timer displayTimer;
-int displayIncrement = 1785;//the amount of time it takes to complete a full fade up
+Timer transitionTimer;
 
 Timer animTimer;
 int animIncrement;
@@ -27,7 +33,7 @@ void setup() {
   currentMode = SPREAD;
   commandState = INERT;
   internalState = INERT;
-  currentColor = 0;
+  currentHue = 0;
   animIncrement = 150;
 }
 
@@ -54,7 +60,7 @@ void loop() {
 
 
   //communicate full state
-  sendData = (currentMode << 5) + (commandState << 3) + (currentColor);//bit-shifted data to fit in 6 bits
+  sendData = (currentMode << 5) + (commandState << 3) + (currentHue);//bit-shifted data to fit in 6 bits
   setValueSentOnAllFaces(sendData);
 
   //do display work
@@ -81,13 +87,13 @@ void inertLoop() {
   //if single clicked, move to SEND_PERSIST
   if (buttonSingleClicked()) {
     changeInternalState(SEND_PERSIST);
-    currentColor = nextColor(currentColor);;
+    currentHue = nextColor(currentHue);;
   }
 
   //if double clicked, move to SEND_SPARKLE
   if (buttonDoubleClicked()) {
     changeInternalState(SEND_SPARKLE);
-    currentColor = rand(7);//generate a random color
+    currentHue = rand(7);//generate a random color
   }
 
   //if long-pressed, move to CONNECT mode
@@ -101,11 +107,11 @@ void inertLoop() {
       byte neighborData = getLastValueReceivedOnFace(f);
       if (getCommandState(neighborData) == SEND_PERSIST) {
         changeInternalState(SEND_PERSIST);
-        currentColor = getColor(neighborData);//you are going to take on the color of the commanding neighbor
+        currentHue = getHue(neighborData);//you are going to take on the color of the commanding neighbor
       }
       if (getCommandState(neighborData) == SEND_SPARKLE) {
         changeInternalState(SEND_SPARKLE);
-        currentColor = rand(7);//generate a random color
+        currentHue = rand(7);//generate a random color
       }
     }
   }
@@ -119,7 +125,7 @@ void sendPersistLoop() {
 
   //now check neighbors. If they have all moved into SEND_PERSIST or RESOLVING, you can move to RESOLVING
   //Only do this check if we are past the full display time
-  if (displayTimer.isExpired()) {
+  if (transitionTimer.isExpired()) {
     bool canResolve = true;//default to true, set to false in the face loop
     FOREACH_FACE(f) {
       byte neighborData = getLastValueReceivedOnFace(f);//we do this before checking for expired so we can use it to evaluate mode below
@@ -144,9 +150,17 @@ void sendSparkleLoop() {
     commandState = internalState;
   }
 
+  FOREACH_FACE(f) {
+    byte neighborData = getLastValueReceivedOnFace(f);
+    if (getCommandState(neighborData) == SEND_PERSIST) {
+      changeInternalState(SEND_PERSIST);
+      currentHue = getHue(neighborData);
+    }
+  }
+
   //now check neighbors. If they have all moved into SEND_SPARKLE or RESOLVING, you can move to RESOLVING
   //Only do this check if we are past the full display time
-  if (displayTimer.isExpired()) {
+  if (transitionTimer.isExpired()) {
     bool canResolve = true;//default to true, set to false in the face loop
     FOREACH_FACE(f) {
       byte neighborData = getLastValueReceivedOnFace(f);//we do this before checking for expired so we can use it to evaluate mode below
@@ -193,9 +207,9 @@ void connectLoop() {
   }
 }
 
-/* 
- *  Data parsing
- */
+/*
+    Data parsing
+*/
 byte getMode(byte data) {
   return (data >> 5);               //the value in the first bit
 }
@@ -204,42 +218,50 @@ byte getCommandState (byte data) {
   return ((data >> 3) & 3);         //the value in the second and third bits
 }
 
-byte getColor(byte data) {
+byte getHue(byte data) {
   return (data & 7);                //the value in the fourth, fifth, and sixth bits
 }
-/* 
- *  End Data parsing
- */
+/*
+    End Data parsing
+*/
 
 
 
 
-/* 
- *  Display Animations
- */
+/*
+    Display Animations
+*/
 void inertDisplay() {
-  setColor(OFF);
+
   FOREACH_FACE(f) {
     // minimum of 125, maximum of 255
     byte phaseShift = 60 * f;
     byte amplitude = 55;
     byte midline = 185;
     byte rate = 4;
-    byte dimLevel = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
-    
-    setFaceColor(f, dim( colors[currentColor], dimLevel));
+    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+    byte saturation = 255;
+
+    Color faceColor = makeColorHSB(hues[currentHue], 255, brightness);
+    setColorOnFace(faceColor, f);
   }
 }
 
 void sendPersistDisplay() {
-  if (animTimer.isExpired()) {
-    animTimer.set(animIncrement);
-    animFrame ++;
-    int dimnessLevel = animFrame;
-    if (dimnessLevel > 255) {
-      dimnessLevel = 255;
-    }
-    setColor(dim(colors[currentColor], dimnessLevel));
+  // go full white and then fade to new color
+  uint32_t delta = millis() - timeOfSend;
+
+  FOREACH_FACE(f) {
+    // minimum of 125, maximum of 255
+    byte phaseShift = 60 * f;
+    byte amplitude = 55;
+    byte midline = 185;
+    byte rate = 4;
+    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+    byte saturation = map_m(delta, 0, SEND_DURATION, 0, 255);
+
+    Color faceColor = makeColorHSB(hues[currentHue], saturation, brightness);
+    setColorOnFace(faceColor, f);
   }
 }
 
@@ -267,7 +289,15 @@ void sendSparkleDisplay() {
 
 void connectDisplay() {
   if (isAlone()) { //so this is a lonely blink. we just set it to full white
-    setColor(WHITE);
+    // minimum of 125, maximum of 255
+    byte amplitude = 30;
+    byte midline = 100;
+    byte rate = 3;
+    byte brightness = midline + amplitude * sin_d( (millis() / rate) % 360);
+
+    Color faceColor = makeColorHSB(0, 0, brightness);
+    setColor(faceColor);
+
   } else {
     setColor(OFF);//later in the loop we'll add the colors
   }
@@ -277,7 +307,8 @@ void connectDisplay() {
       byte neighborData = getLastValueReceivedOnFace(f);
       //now we figure out what is there and what to do with it
       if (getMode(neighborData) == SPREAD) { //this neighbor is in spread mode. Just display the color they are on that face
-        setColorOnFace(colors[getColor(neighborData)], f);
+        Color faceColor = makeColorHSB(hues[getHue(neighborData)], 255, 255);
+        setColorOnFace(faceColor, f);
       } else if (getMode(neighborData) == CONNECT) { //this neighbor is in connect mode. Display a white connection
         setColorOnFace(WHITE, f);
       }
@@ -288,36 +319,29 @@ void connectDisplay() {
 
 
 
-/* 
- *  Data parsing
- */
+/*
+    Data parsing
+*/
 void changeInternalState(byte state) {
   //this is here for the moment of transition. mostly housekeeping
   switch (state) {
     case INERT:
-      animIncrement = 150;
-      animTimer.set(animIncrement);
-      setColor(OFF);
+      // nothing to do here
       break;
     case SEND_PERSIST:
-      animIncrement = 7;
-      animTimer.set(animIncrement);
-      sendTimer.set(sendIncrement);
-      displayTimer.set(displayIncrement);
-      animFrame = 0;
-      setColor(OFF);
+      sendTimer.set(SEND_DELAY);
+      transitionTimer.set(SEND_DURATION);
+      timeOfSend = millis();
       break;
     case SEND_SPARKLE:
       animIncrement = 10;
       animTimer.set(animIncrement);
-      sendTimer.set(sendIncrement);
-      displayTimer.set(displayIncrement);
+      sendTimer.set(SEND_DELAY);
+      transitionTimer.set(SEND_DURATION);
       animFrame = 0;
       setColor(OFF);
       break;
     case RESOLVING:
-      animFrame = 0;
-      animIncrement = 150;
       break;
   }
 
@@ -337,5 +361,11 @@ byte nextColor(byte col) {
 
 float sin_d( uint16_t degrees ) {
 
-    return sin( ( degrees / 360.0F ) * 2.0F * PI   );
+  return sin( ( degrees / 360.0F ) * 2.0F * PI   );
+}
+
+// map value
+long map_m(long x, long in_min, long in_max, long out_min, long out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
