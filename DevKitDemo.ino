@@ -6,12 +6,11 @@ byte commandState;//this is the state sent to neighbors
 byte internalState;//this state is internal, and does not get sent
 
 // Colors by hue
-byte hues[8] = {0, 31, 62, 93, 124, 155, 186, 217}; //the last color is a lime green color
+byte hues[7] = {0, 21, 42, 85, 110, 170, 210}; //the last color is a lime green color
 
-//Color colors[8] = {RED, GREEN, BLUE, ORANGE, MAGENTA, YELLOW, CYAN, makeColorRGB(127, 255, 0)}; //the last color is a lime green color
 byte currentHue;
 byte transitionColor;
-byte sparkleBrightness[6] = {0, 0, 0, 0, 0, 0};
+byte sparkleOffset[6] = {0, 3, 5, 1, 4, 2};
 
 #define SEND_DELAY     100
 #define SEND_DURATION  800
@@ -38,6 +37,9 @@ void setup() {
 }
 
 void loop() {
+  // update the random value
+  rand(1);
+
   // decide which loop to run
   if (currentMode == SPREAD) {//spread logic loops
     switch (internalState) {
@@ -87,13 +89,13 @@ void inertLoop() {
   //if single clicked, move to SEND_PERSIST
   if (buttonSingleClicked()) {
     changeInternalState(SEND_PERSIST);
-    currentHue = nextColor(currentHue);;
+    currentHue = nextHue(currentHue);
   }
 
   //if double clicked, move to SEND_SPARKLE
   if (buttonDoubleClicked()) {
     changeInternalState(SEND_SPARKLE);
-    currentHue = rand(7);//generate a random color
+    currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
   }
 
   //if long-pressed, move to CONNECT mode
@@ -111,13 +113,18 @@ void inertLoop() {
       }
       if (getCommandState(neighborData) == SEND_SPARKLE) {
         changeInternalState(SEND_SPARKLE);
-        currentHue = rand(7);//generate a random color
+        currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
       }
     }
   }
 }
 
 void sendPersistLoop() {
+  // button cleaning
+  buttonSingleClicked();
+  buttonDoubleClicked();
+  buttonLongPressed();
+
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
     commandState = internalState;
@@ -145,6 +152,11 @@ void sendPersistLoop() {
 }
 
 void sendSparkleLoop() {
+  // button cleaning
+  buttonSingleClicked();
+  buttonDoubleClicked();
+  buttonLongPressed();
+
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
     commandState = internalState;
@@ -180,6 +192,11 @@ void sendSparkleLoop() {
 }
 
 void resolvingLoop() {
+  // button cleaning
+  buttonSingleClicked();
+  buttonDoubleClicked();
+  buttonLongPressed();
+
   //check neighbors. If they have all moved into RESOLVING or INERT, you can move to INERT
   bool canInert = true;//default to true, set to false in the face loop
   FOREACH_FACE(f) {
@@ -199,6 +216,10 @@ void resolvingLoop() {
 }
 
 void connectLoop() {
+  // button cleaning
+  buttonSingleClicked();
+  buttonDoubleClicked();
+
   //all that happens in here is we wait for long press to move back to spread. That's it
   if (buttonLongPressed()) {
     currentMode = SPREAD;
@@ -266,23 +287,41 @@ void sendPersistDisplay() {
 }
 
 void sendSparkleDisplay() {
-  if (animTimer.isExpired()) {
-    animTimer.set(animIncrement);
-    animFrame++;
-    FOREACH_FACE(f) {
-      //in this loop, we increment brightnesses, start flashes, and end flashes
-      if (sparkleBrightness[f] == 255) { //this face is at full brightness. Set to 0
-        sparkleBrightness[f] = 0;
-      } else if (sparkleBrightness[f] > 0) { //not at 255, but in process. Increment by 17
-        sparkleBrightness[f] += 15;
-      } else if (sparkleBrightness[f] == 0) { //at 0. If we are on a multiple of five frame, randomly decide to start or not start it
-        if (animFrame % 10 == 0) { //acceptable starting frame
-          sparkleBrightness[f] += rand(1) * 15;//this is either 0 or 17
-        }
-      }//end of if/else
+  // go full white and then fade to new color, pixel by pixel
+  uint32_t delta = millis() - timeOfSend;
 
-      //now that we've addressed the brightness of this pixel, we set it
-      setColorOnFace(dim(WHITE, sparkleBrightness[f]), f);
+  byte offset = 50;
+
+  FOREACH_FACE(f) {
+
+    // if the face has started it's glow
+    uint16_t sparkleStart = sparkleOffset[f] * offset;
+    uint16_t sparkleEnd = sparkleStart + SEND_DURATION - (6 * offset);
+
+    if ( delta > sparkleStart ) {
+      // minimum of 125, maximum of 255
+      byte phaseShift = 60 * f;
+      byte amplitude = 55;
+      byte midline = 185;
+      byte rate = 4;
+      byte lowBri = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+      byte brightness;
+      byte saturation;
+
+      if ( delta < sparkleEnd ) {
+        brightness = map_m(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 255, lowBri);
+        saturation = map_m(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 0, 255);
+      }
+      else {
+        brightness = lowBri;
+        saturation = 255;
+      }
+
+      Color faceColor = makeColorHSB(hues[currentHue], saturation, brightness);
+      setColorOnFace(faceColor, f);
+    }
+    else {
+      // setColorOnFace(OFF, f);
     }
   }
 }
@@ -329,17 +368,14 @@ void changeInternalState(byte state) {
       // nothing to do here
       break;
     case SEND_PERSIST:
+      timeOfSend = millis();
       sendTimer.set(SEND_DELAY);
       transitionTimer.set(SEND_DURATION);
-      timeOfSend = millis();
       break;
     case SEND_SPARKLE:
-      animIncrement = 10;
-      animTimer.set(animIncrement);
+      timeOfSend = millis();
       sendTimer.set(SEND_DELAY);
       transitionTimer.set(SEND_DURATION);
-      animFrame = 0;
-      setColor(OFF);
       break;
     case RESOLVING:
       break;
@@ -348,13 +384,10 @@ void changeInternalState(byte state) {
   internalState = state;
 }
 
-byte nextColor(byte col) {
-  byte nextCol = col;
-  nextCol++;
-  if (nextCol == 8) {
-    nextCol = 0;
-  }
-  return nextCol;
+
+byte nextHue(byte h) {
+  byte nextHue = (h + 1) % COUNT_OF(hues);
+  return nextHue;
 }
 
 // Sin in degrees ( standard sin() takes radians )
