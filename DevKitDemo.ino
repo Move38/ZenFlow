@@ -373,6 +373,7 @@ void changeInternalState(byte state) {
       transitionTimer.set(SEND_DURATION);
       break;
     case SEND_SPARKLE:
+      updateSparkleOffset();
       timeOfSend = millis();
       sendTimer.set(SEND_DELAY);
       transitionTimer.set(SEND_DURATION);
@@ -384,6 +385,28 @@ void changeInternalState(byte state) {
   internalState = state;
 }
 
+// get an array of 6 values
+void updateSparkleOffset() {
+
+  bool bucketFilled[6] = {0, 0, 0, 0, 0, 0};
+ 
+  // each number needs a place
+  for (byte i = 0; i < 6; i++) {
+    byte randBucket = rand(5 - i);
+    byte index = 0;
+
+    // pick the nth empty bucket
+    for (byte j = 0; j < 6; j++) {
+      if (bucketFilled[j]) {
+        index++;
+      }
+      if (index == randBucket) {
+        sparkleOffset[j] = i;
+        bucketFilled[j] = true;
+      }
+    }
+  }
+}
 
 byte nextHue(byte h) {
   byte nextHue = (h + 1) % COUNT_OF(hues);
