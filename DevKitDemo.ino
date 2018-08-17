@@ -6,8 +6,7 @@ byte commandState;//this is the state sent to neighbors
 byte internalState;//this state is internal, and does not get sent
 
 // Colors by hue
-byte hues[7] = {0, 21, 42, 85, 110, 170, 210}; //the last color is a lime green color
-
+byte hues[7] = {0, 21, 42, 85, 110, 170, 210};
 byte currentHue;
 byte transitionColor;
 byte sparkleOffset[6] = {0, 3, 5, 1, 4, 2};
@@ -20,11 +19,6 @@ uint32_t timeOfSend = 0;
 Timer sendTimer;
 Timer transitionTimer;
 
-Timer animTimer;
-int animIncrement;
-
-byte animFrame = 0;
-
 byte sendData;
 
 void setup() {
@@ -33,12 +27,37 @@ void setup() {
   commandState = INERT;
   internalState = INERT;
   currentHue = 0;
-  animIncrement = 150;
 }
 
 void loop() {
   // update the random value
   rand(1);
+
+  // BUTTON HANDLING
+  //if single clicked, move to SEND_PERSIST
+  if (buttonSingleClicked()) {
+    if (currentMode == SPREAD) {
+      changeInternalState(SEND_PERSIST);
+      currentHue = nextHue(currentHue);
+    }
+  }
+
+  //if double clicked, move to SEND_SPARKLE
+  if (buttonDoubleClicked()) {
+    if (currentMode == SPREAD) {
+      changeInternalState(SEND_SPARKLE);
+      currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
+    }
+  }
+
+  //if long-pressed, move to CONNECT mode
+  if (buttonLongPressed()) {
+    switch (currentMode) {
+      case CONNECT:   currentMode = SPREAD;   break;
+      case SPREAD:    currentMode = CONNECT;  break;
+    }
+  }
+
 
   // decide which loop to run
   if (currentMode == SPREAD) {//spread logic loops
@@ -86,53 +105,26 @@ void loop() {
 
 
 void inertLoop() {
-  //if single clicked, move to SEND_PERSIST
-  if (buttonSingleClicked()) {
-    changeInternalState(SEND_PERSIST);
-    currentHue = nextHue(currentHue);
-  }
-
-  //if double clicked, move to SEND_SPARKLE
-  if (buttonDoubleClicked()) {
-    changeInternalState(SEND_SPARKLE);
-    currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
-  }
-
-  //if long-pressed, move to CONNECT mode
-  if (buttonLongPressed()) {
-    currentMode = CONNECT;
-  }
 
   //now we evaluate neighbors. if our neighbor is in either send state, move to that send state
   FOREACH_FACE(f) {
     if (!isValueReceivedOnFaceExpired(f)) {
       byte neighborData = getLastValueReceivedOnFace(f);
-      if (getCommandState(neighborData) == SEND_PERSIST) {
-        changeInternalState(SEND_PERSIST);
-        currentHue = getHue(neighborData);//you are going to take on the color of the commanding neighbor
-      }
-      if (getCommandState(neighborData) == SEND_SPARKLE) {
-        changeInternalState(SEND_SPARKLE);
-        currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
+      if (getMode(neighborData) == SPREAD) {
+        if (getCommandState(neighborData) == SEND_PERSIST) {
+          changeInternalState(SEND_PERSIST);
+          currentHue = getHue(neighborData);//you are going to take on the color of the commanding neighbor
+        }
+        if (getCommandState(neighborData) == SEND_SPARKLE) {
+          changeInternalState(SEND_SPARKLE);
+          currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
+        }
       }
     }
   }
 }
 
 void sendPersistLoop() {
-  if (isAlone()) {
-    if (buttonSingleClicked()) {
-      currentHue = nextHue(currentHue);
-      changeInternalState(SEND_PERSIST);
-    }
-  }
-
-  // button cleaning
-  buttonSingleClicked();
-  buttonDoubleClicked();
-  buttonLongPressed();
-
-
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
     commandState = internalState;
@@ -160,10 +152,6 @@ void sendPersistLoop() {
 }
 
 void sendSparkleLoop() {
-  // button cleaning
-  buttonSingleClicked();
-  buttonDoubleClicked();
-  buttonLongPressed();
 
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
@@ -192,7 +180,7 @@ void sendSparkleLoop() {
     }//end of face loop
 
     //if we've survived and are stil true, we transition to resolving
-    if (canResolve) {
+    if (canResolve && !isAlone()) {
       changeInternalState(RESOLVING);
       commandState = RESOLVING;
     }
@@ -200,11 +188,6 @@ void sendSparkleLoop() {
 }
 
 void resolvingLoop() {
-  // button cleaning
-  buttonSingleClicked();
-  buttonDoubleClicked();
-  buttonLongPressed();
-
   //check neighbors. If they have all moved into RESOLVING or INERT, you can move to INERT
   bool canInert = true;//default to true, set to false in the face loop
   FOREACH_FACE(f) {
@@ -224,16 +207,7 @@ void resolvingLoop() {
 }
 
 void connectLoop() {
-  // button cleaning
-  buttonSingleClicked();
-  buttonDoubleClicked();
-
-  //all that happens in here is we wait for long press to move back to spread. That's it
-  if (buttonLongPressed()) {
-    currentMode = SPREAD;
-    changeInternalState(INERT);
-    animFrame = 0;
-  }
+  // nothing to do here
 }
 
 /*
@@ -282,7 +256,7 @@ void sendPersistDisplay() {
 
   // show that we are charged up when alone
   if (isAlone()) {
-    while(delta > SEND_DURATION * 3) {
+    while (delta > SEND_DURATION * 3) {
       delta -= SEND_DURATION * 3;
     }
   }
@@ -308,6 +282,17 @@ void sendPersistDisplay() {
 void sendSparkleDisplay() {
   // go full white and then fade to new color, pixel by pixel
   uint32_t delta = millis() - timeOfSend;
+
+  // show that we are charged up when alone
+  if (isAlone()) {
+    while (delta > SEND_DURATION * 3) {
+      delta -= SEND_DURATION * 3;
+    }
+  }
+
+  if (delta > SEND_DURATION) {
+    delta = SEND_DURATION;
+  }
 
   byte offset = 50;
 
@@ -338,9 +323,6 @@ void sendSparkleDisplay() {
 
       Color faceColor = makeColorHSB(hues[currentHue], saturation, brightness);
       setColorOnFace(faceColor, f);
-    }
-    else {
-      // setColorOnFace(OFF, f);
     }
   }
 }
