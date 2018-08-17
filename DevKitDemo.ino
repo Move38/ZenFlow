@@ -120,10 +120,18 @@ void inertLoop() {
 }
 
 void sendPersistLoop() {
+  if (isAlone()) {
+    if (buttonSingleClicked()) {
+      currentHue = nextHue(currentHue);
+      changeInternalState(SEND_PERSIST);
+    }
+  }
+
   // button cleaning
   buttonSingleClicked();
   buttonDoubleClicked();
   buttonLongPressed();
+
 
   //first, check if it's been long enough to send the command
   if (sendTimer.isExpired()) {
@@ -144,7 +152,7 @@ void sendPersistLoop() {
     }//end of face loop
 
     //if we've survived and are stil true, we transition to resolving
-    if (canResolve) {
+    if (canResolve && !isAlone()) {
       changeInternalState(RESOLVING);
       commandState = RESOLVING;
     }
@@ -271,6 +279,10 @@ void inertDisplay() {
 void sendPersistDisplay() {
   // go full white and then fade to new color
   uint32_t delta = millis() - timeOfSend;
+
+  if (delta > SEND_DURATION) {
+    delta = SEND_DURATION;
+  }
 
   FOREACH_FACE(f) {
     // minimum of 125, maximum of 255
