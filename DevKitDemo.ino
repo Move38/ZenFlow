@@ -280,6 +280,13 @@ void sendPersistDisplay() {
   // go full white and then fade to new color
   uint32_t delta = millis() - timeOfSend;
 
+  // show that we are charged up when alone
+  if (isAlone()) {
+    while(delta > SEND_DURATION * 3) {
+      delta -= SEND_DURATION * 3;
+    }
+  }
+
   if (delta > SEND_DURATION) {
     delta = SEND_DURATION;
   }
