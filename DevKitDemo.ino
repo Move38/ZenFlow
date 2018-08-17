@@ -15,6 +15,7 @@ byte sparkleOffset[6] = {0, 3, 5, 1, 4, 2};
 #define SEND_DURATION  800
 
 uint32_t timeOfSend = 0;
+uint32_t timeOfPress = 0; // use this to show the button was pressed in connect mode
 
 Timer sendTimer;
 Timer transitionTimer;
@@ -40,6 +41,9 @@ void loop() {
       changeInternalState(SEND_PERSIST);
       currentHue = nextHue(currentHue);
     }
+    if (currentMode == CONNECT) {
+      timeOfPress = millis();
+    }
   }
 
   //if double clicked, move to SEND_SPARKLE
@@ -47,6 +51,9 @@ void loop() {
     if (currentMode == SPREAD) {
       changeInternalState(SEND_SPARKLE);
       currentHue = rand(COUNT_OF(hues) - 1); //generate a random color
+    }
+    if (currentMode == CONNECT) {
+      timeOfPress = millis();
     }
   }
 
@@ -328,12 +335,21 @@ void sendSparkleDisplay() {
 }
 
 void connectDisplay() {
+  // go full white and then fade to new color, pixel by pixel
+  uint32_t delta = millis() - timeOfPress;
+  if ( delta > 300) {
+    delta = 300;
+  }
+
   if (isAlone()) { //so this is a lonely blink. we just set it to full white
     // minimum of 125, maximum of 255
     byte amplitude = 30;
     byte midline = 100;
     byte rate = 3;
     byte brightness = midline + amplitude * sin_d( (millis() / rate) % 360);
+
+    // if the button recently pressed, dip and then raise up
+    brightness = map_m(delta, 0, 300, 0, brightness);
 
     Color faceColor = makeColorHSB(0, 0, brightness);
     setColor(faceColor);
@@ -347,10 +363,12 @@ void connectDisplay() {
       byte neighborData = getLastValueReceivedOnFace(f);
       //now we figure out what is there and what to do with it
       if (getMode(neighborData) == SPREAD) { //this neighbor is in spread mode. Just display the color they are on that face
-        Color faceColor = makeColorHSB(hues[getHue(neighborData)], 255, 255);
+        byte brightness = map_m(delta, 0, 300, 0, 255);
+        Color faceColor = makeColorHSB(hues[getHue(neighborData)], 255, brightness);
         setColorOnFace(faceColor, f);
       } else if (getMode(neighborData) == CONNECT) { //this neighbor is in connect mode. Display a white connection
-        setColorOnFace(WHITE, f);
+        byte brightness = map_m(delta, 0, 300, 0, 255);
+        setColorOnFace(makeColorHSB(0, 0, brightness), f);
       }
     }
   }//end of face loop
@@ -379,6 +397,7 @@ void changeInternalState(byte state) {
       transitionTimer.set(SEND_DURATION);
       break;
     case RESOLVING:
+      // nothing to do here
       break;
   }
 
