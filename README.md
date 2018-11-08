@@ -1,5 +1,5 @@
-# DevKitDemo
-Application that ships with Beta Dev Kits
+# Zen Flow
+This sketch was so beloved by the Beta Dev Kit community that we decided it belongs as a core Blinks experience. Zen Flow is not necessarily a game, although we have seen games emerge from its mesmerizing interactivity.
 
 ## Actions
 1. Single click spreads the next color to all contiguous Blinks
