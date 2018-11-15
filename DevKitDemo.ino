@@ -2,9 +2,9 @@
    Dev Kit Demo
 */
 
-#include "Serial.h"
+//#include "Serial.h"
 
-ServicePortSerial Serial;
+//ServicePortSerial Serial;
 
 enum modeStates {SPREAD, CONNECT};
 byte currentMode;
@@ -31,7 +31,7 @@ byte sendData;
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin();
+  //Serial.begin();
 
   currentMode = SPREAD;
   commandState = INERT;
@@ -44,12 +44,12 @@ void loop() {
   // BUTTON HANDLING
   //if single clicked, move to SEND_PERSIST
   if (buttonSingleClicked()) {
-    Serial.println("Single Click Registered");
+    //Serial.println("Single Click Registered");
     if (currentMode == SPREAD) {
       changeInternalState(SEND_PERSIST);
       currentHue = nextHue(currentHue);
-      Serial.print("hue: ");
-      Serial.println(currentHue);
+      //Serial.print("hue: ");
+      //Serial.println(currentHue);
     }
     if (currentMode == CONNECT) {
       timeOfPress = millis();
@@ -58,13 +58,13 @@ void loop() {
 
   //if double clicked, move to SEND_SPARKLE
   if (buttonDoubleClicked()) {
-    Serial.println("Double Click Registered");
+    //Serial.println("Double Click Registered");
 
     if (currentMode == SPREAD) {
       changeInternalState(SEND_SPARKLE);
       currentHue = millis() % COUNT_OF(hues); //generate a random color
-      Serial.print("hue: ");
-      Serial.println(currentHue);
+      //Serial.print("hue: ");
+      //Serial.println(currentHue);
     }
     if (currentMode == CONNECT) {
       timeOfPress = millis();
@@ -102,7 +102,6 @@ void loop() {
   } else if (currentMode == CONNECT) {
     connectLoop();
   }
-
 
   //communicate full state
   sendData = (currentMode << 5) + (commandState << 3) + (currentHue);//bit-shifted data to fit in 6 bits
@@ -184,12 +183,13 @@ void sendSparkleLoop() {
     commandState = internalState;
   }
 
+  //here we can transition from sparkle to persist spread
   FOREACH_FACE(f) {
     if (!isValueReceivedOnFaceExpired(f)) {
       byte neighborData = getLastValueReceivedOnFace(f);
       if (getCommandState(neighborData) == SEND_PERSIST && getCommandState(neighborData) == SPREAD) {
         changeInternalState(SEND_PERSIST);
-        currentHue = getHue(neighborData);
+        currentHue = getHue(neighborData);//you are going to take on the color of the commanding neighbor
       }
     }
   }
@@ -405,23 +405,23 @@ void changeInternalState(byte state) {
   //this is here for the moment of transition. mostly housekeeping
   switch (state) {
     case INERT:
-      Serial.println("I'm just hangin' tight.");
+      ////serial.println("I'm just hangin' tight.");
       // nothing to do here
       break;
     case SEND_PERSIST:
-      Serial.println("show the next color and spread it");
+      //serial.println("show the next color and spread it");
       timeOfSend = millis();
       sendTimer.set(SEND_DELAY);
       transitionTimer.set(SEND_DURATION);
       break;
     case SEND_SPARKLE:
-      Serial.println("a little sparkle for y'all");
+      //serial.println("a little sparkle for y'all");
       timeOfSend = millis();
       sendTimer.set(SEND_DELAY);
       transitionTimer.set(SEND_DURATION);
       break;
     case RESOLVING:
-      Serial.println("I'm in my happy place :)");
+      //serial.println("I'm in my happy place :)");
       // nothing to do here
       break;
   }
