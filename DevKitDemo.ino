@@ -14,8 +14,7 @@ byte commandState;//this is the state sent to neighbors
 byte internalState;//this state is internal, and does not get sent
 
 // Colors by hue
-byte hues[7] = {85, 96, 110, 150, 170, 190, 210};
-//byte hues[7] = {0, 21, 42, 85, 110, 170, 210};
+byte hues[7] = {0, 21, 42, 85, 110, 170, 210};
 byte currentHue;
 byte sparkleOffset[6] = {0, 3, 5, 1, 4, 2};
 
