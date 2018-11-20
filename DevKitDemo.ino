@@ -271,7 +271,7 @@ void inertDisplay() {
     byte amplitude = 55;
     byte midline = 185;
     byte rate = 4;
-    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+    byte brightness = midline + (amplitude * sin_d( (phaseShift + millis() / rate) % 360) / 100);
     byte saturation = 255;
 
     Color faceColor = makeColorHSB(hues[currentHue], 255, brightness);
@@ -300,7 +300,7 @@ void sendPersistDisplay() {
     byte amplitude = 55;
     byte midline = 185;
     byte rate = 4;
-    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+    byte brightness = midline + (amplitude * sin_d( (phaseShift + millis() / rate) % 360) / 100);
     byte saturation = map_m(delta, 0, SEND_DURATION, 0, 255);
 
     Color faceColor = makeColorHSB(hues[currentHue], saturation, brightness);
@@ -337,7 +337,7 @@ void sendSparkleDisplay() {
       byte amplitude = 55;
       byte midline = 185;
       byte rate = 4;
-      byte lowBri = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+      byte lowBri = midline + (amplitude * sin_d( (phaseShift + millis() / rate) % 360) / 100);
       byte brightness;
       byte saturation;
 
@@ -368,7 +368,7 @@ void connectDisplay() {
     byte amplitude = 30;
     byte midline = 100;
     byte rate = 3;
-    byte brightness = midline + amplitude * sin_d( (millis() / rate) % 360);
+    byte brightness = midline + (amplitude * sin_d( (millis() / rate) % 360) / 100);
 
     // if the button recently pressed, dip and then raise up
     brightness = map_m(delta, 0, 300, 0, brightness);
@@ -435,9 +435,25 @@ byte nextHue(byte h) {
 
 // Sin in degrees ( standard sin() takes radians )
 
-float sin_d( uint16_t degrees ) {
-
-  return sin( ( degrees / 360.0F ) * 2.0F * PI   );
+//takes values 0-360 and translates them into values 0-1 using the sin function
+//updated to ouput values 0-100 instead
+int sin_d( uint16_t degrees ) {
+  //16 separated values approximating sin values in a quarter turn
+  byte outputs[16] = {0, 10, 20, 38, 47, 56, 63, 71, 77, 83, 88, 92, 96, 98, 100, 100};
+  byte distance;
+  if (degrees < 90) {
+    distance = map_m(degrees, 0, 90, 0, 15);
+    return (outputs[distance]);
+  } else if (degrees < 180) {
+    distance = map_m(degrees, 90, 180, 15, 0);
+    return (outputs[distance]);
+  } else if (degrees < 270) {
+    distance = map_m(degrees, 180, 270, 0, 15);
+    return (outputs[distance] * (-1));
+  } else {
+    distance = map_m(degrees, 270, 360, 15, 0);
+    return (outputs[distance] * (-1));
+  }
 }
 
 // map value
