@@ -434,24 +434,22 @@ byte nextHue(byte h) {
 }
 
 // Sin in degrees ( standard sin() takes radians )
-
-//takes values 0-360 and translates them into values 0-1 using the sin function
-//updated to ouput values 0-100 instead
+//takes values 0-360 and translates them into values [-100,100] using the sin table
 int sin_d( uint16_t degrees ) {
   //16 separated values approximating sin values in a quarter turn
   byte outputs[16] = {0, 10, 20, 38, 47, 56, 63, 71, 77, 83, 88, 92, 96, 98, 100, 100};
   byte distance;
   if (degrees < 90) {
-    distance = map_m(degrees, 0, 90, 0, 15);
+    distance = degrees / 6;
     return (outputs[distance]);
   } else if (degrees < 180) {
-    distance = map_m(degrees, 90, 180, 15, 0);
+    distance = 15 - ((degrees-90) / 6);
     return (outputs[distance]);
   } else if (degrees < 270) {
-    distance = map_m(degrees, 180, 270, 0, 15);
+    distance = (degrees-180) / 6;
     return (outputs[distance] * (-1));
   } else {
-    distance = map_m(degrees, 270, 360, 15, 0);
+    distance = 15 - ((degrees-270) / 6);
     return (outputs[distance] * (-1));
   }
 }
