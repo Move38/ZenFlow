@@ -267,7 +267,7 @@ void inertDisplay() {
 
   FOREACH_FACE(f) {
     // minimum of 125, maximum of 255
-    byte phaseShift = 60 * f;
+    word phaseShift = 60 * f;
     byte amplitude = 55;
     byte midline = 185;
     byte rate = 4;
@@ -296,7 +296,7 @@ void sendPersistDisplay() {
 
   FOREACH_FACE(f) {
     // minimum of 125, maximum of 255
-    byte phaseShift = 60 * f;
+    word phaseShift = 60 * f;
     byte amplitude = 55;
     byte midline = 185;
     byte rate = 4;
@@ -333,7 +333,7 @@ void sendSparkleDisplay() {
 
     if ( delta > sparkleStart ) {
       // minimum of 125, maximum of 255
-      byte phaseShift = 60 * f;
+      word phaseShift = 60 * f;
       byte amplitude = 55;
       byte midline = 185;
       byte rate = 4;
