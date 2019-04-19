@@ -156,25 +156,28 @@ void sendPersistLoop() {
     commandState = internalState;
   }
 
-  //now check neighbors. If they have all moved into SEND_PERSIST or RESOLVING, you can move to RESOLVING
-  //Only do this check if we are past the full display time
   if (transitionTimer.isExpired()) {
-    bool canResolve = true;//default to true, set to false in the face loop
-    FOREACH_FACE(f) {
-      byte neighborData = getLastValueReceivedOnFace(f);//we do this before checking for expired so we can use it to evaluate mode below
-      if (!isValueReceivedOnFaceExpired(f) && getMode(neighborData) == SPREAD) {//something is here, and in a compatible mode. We ignore the others
-        if (getCommandState(neighborData) != SEND_PERSIST && getCommandState(neighborData) != RESOLVING) {//it is neither of the acceptable states
-          canResolve = false;
-        }
-      }
-    }//end of face loop
-
+    //now check neighbors. If they have all moved into SEND_PERSIST or RESOLVING, you can move to RESOLVING
+    //Only do this check if we are past the full display time
     //if we've survived and are stil true, we transition to resolving
-    if (canResolve && !isAlone()) {
+    if (canResolve(SEND_PERSIST) && !isAlone()) {
       changeInternalState(RESOLVING);
       commandState = RESOLVING;
     }
   }
+}
+
+bool canResolve(byte a) {
+  bool canResolve = true;//default to true, set to false in the face loop
+  FOREACH_FACE(f) {
+    byte neighborData = getLastValueReceivedOnFace(f);//we do this before checking for expired so we can use it to evaluate mode below
+    if (!isValueReceivedOnFaceExpired(f) && getMode(neighborData) == SPREAD) {//something is here, and in a compatible mode. We ignore the others
+      if (getCommandState(neighborData) != a && getCommandState(neighborData) != RESOLVING) {//it is neither of the acceptable states
+        canResolve = false;
+      }
+    }
+  }//end of face loop
+  return canResolve;
 }
 
 void sendSparkleLoop() {
@@ -198,18 +201,8 @@ void sendSparkleLoop() {
   //now check neighbors. If they have all moved into SEND_SPARKLE or RESOLVING, you can move to RESOLVING
   //Only do this check if we are past the full display time
   if (transitionTimer.isExpired()) {
-    bool canResolve = true;//default to true, set to false in the face loop
-    FOREACH_FACE(f) {
-      byte neighborData = getLastValueReceivedOnFace(f);//we do this before checking for expired so we can use it to evaluate mode below
-      if (!isValueReceivedOnFaceExpired(f) && getMode(neighborData) == SPREAD) {//something is here, and in a compatible mode. We ignore the others
-        if (getCommandState(neighborData) != SEND_SPARKLE && getCommandState(neighborData) != RESOLVING) {//it is neither of the acceptable states
-          canResolve = false;
-        }
-      }
-    }//end of face loop
-
     //if we've survived and are stil true, we transition to resolving
-    if (canResolve && !isAlone()) {
+    if (canResolve(SEND_SPARKLE) && !isAlone()) {
       changeInternalState(RESOLVING);
       commandState = RESOLVING;
     }
@@ -263,22 +256,24 @@ byte getHue(byte data) {
 /*
     Display Animations
 */
+// this code uses ~100 Bytes
 void inertDisplay() {
 
-  FOREACH_FACE(f) {
-    // minimum of 125, maximum of 255
-    byte phaseShift = 60 * f;
-    byte amplitude = 55;
-    byte midline = 185;
-    byte rate = 4;
-    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
-    byte saturation = 255;
-
-    Color faceColor = makeColorHSB(hues[currentHue], 255, brightness);
-    setColorOnFace(faceColor, f);
-  }
+//  FOREACH_FACE(f) {
+//    // minimum of 125, maximum of 255
+//    byte phaseShift = 60 * f;
+//    byte amplitude = 55;
+//    byte midline = 185;
+//    byte rate = 4;
+//    byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
+//    byte saturation = 255;
+//
+//    Color faceColor = makeColorHSB(hues[currentHue], 255, brightness);
+//    setColorOnFace(faceColor, f);
+//  }
 }
 
+// this code uses ~200 Bytes
 void sendPersistDisplay() {
   // go full white and then fade to new color
   uint32_t delta = millis() - timeOfSend;
@@ -301,13 +296,14 @@ void sendPersistDisplay() {
     byte midline = 185;
     byte rate = 4;
     byte brightness = midline + amplitude * sin_d( (phaseShift + millis() / rate) % 360);
-    byte saturation = map_m(delta, 0, SEND_DURATION, 0, 255);
+    byte saturation = map(delta, 0, SEND_DURATION, 0, 255);
 
     Color faceColor = makeColorHSB(hues[currentHue], saturation, brightness);
     setColorOnFace(faceColor, f);
   }
 }
 
+// this code uses ~400 Bytes
 void sendSparkleDisplay() {
   // go full white and then fade to new color, pixel by pixel
   uint32_t delta = millis() - timeOfSend;
@@ -342,8 +338,8 @@ void sendSparkleDisplay() {
       byte saturation;
 
       if ( delta < sparkleEnd ) {
-        brightness = map_m(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 255, lowBri);
-        saturation = map_m(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 0, 255);
+        brightness = map(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 255, lowBri);
+        saturation = map(delta, sparkleStart, sparkleStart + SEND_DURATION - (6 * offset), 0, 255);
       }
       else {
         brightness = lowBri;
@@ -356,6 +352,7 @@ void sendSparkleDisplay() {
   }
 }
 
+// this code uses ~300 Bytes
 void connectDisplay() {
   // go full white and then fade to new color, pixel by pixel
   uint32_t delta = millis() - timeOfPress;
@@ -371,7 +368,7 @@ void connectDisplay() {
     byte brightness = midline + amplitude * sin_d( (millis() / rate) % 360);
 
     // if the button recently pressed, dip and then raise up
-    brightness = map_m(delta, 0, 300, 0, brightness);
+    brightness = map(delta, 0, 300, 0, brightness);
 
     Color faceColor = makeColorHSB(0, 0, brightness);
     setColor(faceColor);
@@ -385,11 +382,11 @@ void connectDisplay() {
       byte neighborData = getLastValueReceivedOnFace(f);
       //now we figure out what is there and what to do with it
       if (getMode(neighborData) == SPREAD) { //this neighbor is in spread mode. Just display the color they are on that face
-        byte brightness = map_m(delta, 0, 300, 0, 255);
+        byte brightness = map(delta, 0, 300, 0, 255);
         Color faceColor = makeColorHSB(hues[getHue(neighborData)], 255, brightness);
         setColorOnFace(faceColor, f);
       } else if (getMode(neighborData) == CONNECT) { //this neighbor is in connect mode. Display a white connection
-        byte brightness = map_m(delta, 0, 300, 0, 255);
+        byte brightness = map(delta, 0, 300, 0, 255);
         setColorOnFace(makeColorHSB(0, 0, brightness), f);
       }
     }
@@ -441,7 +438,7 @@ float sin_d( uint16_t degrees ) {
 }
 
 // map value
-long map_m(long x, long in_min, long in_max, long out_min, long out_max)
-{
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
+//long map_m(long x, long in_min, long in_max, long out_min, long out_max)
+//{
+//  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+//}
